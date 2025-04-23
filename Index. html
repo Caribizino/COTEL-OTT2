@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>COTEL OTT</title>
+  <style>
+    body { background: orange; margin: 0; font-family: sans-serif; color: #fff; }
+    #login, #contenido { display: none; padding: 20px; }
+    input { padding: 10px; width: 90%; margin: 5px 0; border: none; border-radius: 5px; }
+    button { padding: 10px 20px; background: #000; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
+    .menu { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; }
+    .menu button { flex: 1; }
+    #player { width: 100%; height: 400px; margin: 20px 0; }
+    .lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+    .item { background: #222; padding: 10px; border-radius: 8px; text-align: center; cursor: pointer; }
+    .item img { width: 100%; border-radius: 5px; }
+    .info { margin-top: 10px; text-align: center; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/clappr@latest/dist/clappr.min.js"></script>
+</head>
+<body>
+
+  <div id="login">
+    <h2>Iniciar Sesión en COTEL OTT</h2>
+    <input id="user" placeholder="Usuario" /><br/>
+    <input id="pass" type="password" placeholder="Contraseña" /><br/>
+    <button onclick="login()">Entrar</button>
+  </div>
+
+  <div id="contenido">
+    <h2 id="bienvenida">Bienvenido</h2>
+    <div class="menu">
+      <button onclick="cargar('live')">TV en Vivo</button>
+      <button onclick="cargar('movie')">Películas</button>
+      <button onclick="cargar('series')">Series</button>
+    </div>
+    <div id="player"></div>
+    <div class="info" id="infoActual"></div>
+    <div class="lista" id="lista"></div>
+  </div>
+
+  <script>
+    const server = "http://camtv.pro:25461";
+    let token = {};
+    let currentList = [], currentIndex = 0;
+
+    document.getElementById("login").style.display = "block";
+
+    function login() {
+      const u = document.getElementById("user").value;
+      const p = document.getElementById("pass").value;
+      fetch(`${server}/player_api.php?username=${u}&password=${p}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.user_info?.status === "Active") {
+            token = { username: u, password: p };
+            document.getElementById("login").style.display = "none";
+            document.getElementById("contenido").style.display = "block";
+            document.getElementById("bienvenida").innerText = `Bienvenido ${u}`;
+            cargar("live");
+          } else {
+            alert("Credenciales incorrectas.");
+          }
+        })
+        .catch(() => alert("Error de conexión con el servidor."));
+    }
+
+    function cargar(tipo) {
+      const endpoint = {
+        live: "get_live_streams",
+        movie: "get_vod_streams",
+        series: "get_series"
+      }[tipo];
+
+      fetch(`${server}/player_api.php?username=${token.username}&password=${token.password}&action=${endpoint}`)
+        .then(res => res.json())
+        .then(data => {
+          currentList = data;
+          currentIndex = 0;
+          mostrarLista(data, tipo);
+        });
+    }
+
+    function mostrarLista(data, tipo) {
+      const contenedor = document.getElementById("lista");
+      contenedor.innerHTML = "";
+      data.forEach((item, i) => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <img src="${item.stream_icon || item.cover || ''}" alt="">
+          <div>${item.name}</div>`;
+        div.onclick = () => reproducir(item, i, tipo);
+        contenedor.appendChild(div);
+      });
+    }
+
+    function reproducir(item, index, tipo) {
+      currentIndex = index;
+      let url = `${server}/live/${token.username}/${token.password}/${item.stream_id}.${item.stream_type || 'm3u8'}`;
+      if (tipo === "movie") {
+        url = `${server}/movie/${token.username}/${token.password}/${item.stream_id}.${item.container_extension}`;
+      }
+      document.getElementById("player").innerHTML = "";
+      new Clappr.Player({
+        source: url,
+        parentId: "#player",
+        autoPlay: true,
+        width: "100%",
+        height: 400,
+        mediacontrol: { seekbar: "#FFF", buttons: "#FFF" }
+      });
+      actualizarInfo();
+    }
+
+    function actualizarInfo() {
+      const actual = currentList[currentIndex]?.name || "Actual";
+      const anterior = currentList[currentIndex - 1]?.name || "Inicio";
+      const siguiente = currentList[currentIndex + 1]?.name || "Último";
+      document.getElementById("infoActual").innerText = `Anterior: ${anterior} | Ahora: ${actual} | Siguiente: ${siguiente}`;
+    }
+  </script>
+
+</body>
+</html>
